@@ -22,7 +22,8 @@ REMINDER_HOUR = 8
 REMINDER_MINUTE = 55
 BOSS_RESPONSE_TIMEOUT_MINUTES = 5   # 等老闆回覆幾分鐘
 DECISION_DEADLINE_MINUTES = 15      # 自動模式：結論後幾分鐘開始執行
-THINK_DELAY_SECONDS = 22            # 每位員工發言間隔
+THINK_DELAY_SECONDS = 5             # 不同員工發言間隔
+SAME_EMPLOYEE_DELAY_SECONDS = 20    # 同一員工再次發言間隔
 
 # ── 員工設定 ──────────────────────────────────────
 EMPLOYEES = {

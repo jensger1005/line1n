@@ -6,10 +6,11 @@ from datetime import datetime, date
 import pytz
 
 from config import (
-    EMPLOYEES, DIRECTOR, THINK_DELAY_SECONDS,
+    EMPLOYEES, DIRECTOR, THINK_DELAY_SECONDS, SAME_EMPLOYEE_DELAY_SECONDS,
     DECISION_DEADLINE_MINUTES, TIMEZONE
 )
 from gemini_client import ask_employee, check_budget_mention
+from sheets_client import read_input_data, save_meeting_record, save_task_package
 from line_client import (
     send_line_message, format_employee_message,
     format_director_message, format_system_message
@@ -102,8 +103,9 @@ async def run_morning_meeting(group_id: str, boss_joining: bool):
 
         await asyncio.sleep(3)
 
-        # 載入歷史記憶
+        # 載入歷史記憶 & 公司輸入資料
         recent_history = load_recent_summaries(3)
+        company_info = await read_input_data()
 
         # ── 第一輪：數據師開場 ────────────────────
         await send_line_message(group_id, "💭 數據師正在整理報告...")
@@ -111,6 +113,9 @@ async def run_morning_meeting(group_id: str, boss_joining: bool):
 
         data_task = f"""現在是早會第一輪，由你開場。
 任務：報告近期數據表現，並基於數據提出今日行銷的重點方向建議。
+
+【公司與產品資料】
+{company_info}
 
 近期會議記錄參考：
 {recent_history}
@@ -190,7 +195,7 @@ async def run_morning_meeting(group_id: str, boss_joining: bool):
 
         # ── 第三輪：數據師回應衝突 ────────────────
         await send_line_message(group_id, "💭 數據師正在補充...")
-        await asyncio.sleep(THINK_DELAY_SECONDS)
+        await asyncio.sleep(SAME_EMPLOYEE_DELAY_SECONDS)
 
         context_so_far = "\n\n".join(conversation_log)
         data_round2_task = f"""現在是第三輪，你要回應剛才的討論。
@@ -264,10 +269,16 @@ async def run_morning_meeting(group_id: str, boss_joining: bool):
         state.awaiting_boss_decision = boss_joining or budget_triggered
 
         # 儲存會議記錄
-        full_log = f"【開會模式：{'有人' if boss_joining else '自動'}】\n\n" + \
+        mode_label = "有人模式" if boss_joining else "自動模式"
+        full_log = f"【開會模式：{mode_label}】\n\n" + \
                    "\n\n".join(conversation_log) + \
                    f"\n\n【總監結論】\n{director_response}"
         save_meeting_summary(full_log)
+
+        # 儲存至 Google Sheets
+        today_str = date.today().strftime("%Y-%m-%d")
+        now_str = datetime.now(tz).strftime("%H:%M")
+        await save_meeting_record(today_str, now_str, mode_label, full_log)
 
         # 自動模式：提醒異議時間
         if not boss_joining and not budget_triggered:
@@ -358,3 +369,6 @@ async def produce_task_package(group_id: str, plan: str = "A"):
     )
 
     await send_line_message(group_id, task_message)
+
+    # 儲存任務包至 Google Sheets
+    await save_task_package(today, now, plan, state.current_meeting_summary, task_message)
